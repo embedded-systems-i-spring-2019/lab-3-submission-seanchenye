@@ -1,0 +1,82 @@
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL, IEEE.NUMERIC_STD.ALL;
+
+entity uart_tx is
+	port (send, en, rst, clk : in std_logic;
+		  char               : in std_logic_vector(7 downto 0);
+		  ready, tx:           out std_logic);
+end uart_tx;
+
+architecture Behavioral of uart_tx is
+type type_state is (idle, trans);
+signal PS, NS: type_state;
+signal buf_bits: std_logic_vector(7 downto 0) := "00000000";
+signal buf_bit: std_logic := '0';
+signal counter: std_logic_vector(3 downto 0) := "0000";
+begin
+
+sync_proc: process(clk)
+	begin
+	if(rst = '1') then
+		buf_bit <= '0';
+		buf_bits <= "00000000";
+		counter <= "0000";
+		NS <= idle;
+	end if;
+
+	if(rising_edge(clk)) then
+		--if the state changes to trans, load char into buf_bits
+		if(PS = idle and NS = trans) then
+			buf_bits <= char;	
+		end if;
+		PS <= NS;
+		if (en = '1') then
+        PS <= NS;
+		case PS is  
+			when idle =>
+			    buf_bit <= '1';
+				counter <= "0000";
+				--ready <= '1';
+			-- if send is asserted and enable is 1
+				if(send = '1') then
+					NS <= trans;
+				elsif(send = '0') then
+					NS <= idle;
+				else 
+                    NS <= idle;
+				end if;
+			when trans =>
+			    if(to_integer(unsigned(counter)) < 9) then
+			        if(to_integer(unsigned(counter))=0) then
+                        buf_bit <= '0';
+                    else 
+                        buf_bit <= buf_bits(to_integer(unsigned(counter))-1);
+                    end if;
+
+                    counter <= std_logic_vector(unsigned(counter) + 1);
+					NS <= trans;
+				--if counter = 9, reset counter, goes to idle
+			    else
+			         buf_bit <= '1';
+			         counter <= "0000";
+                     NS <= idle;
+                end if;
+			    
+            when others =>
+                buf_bit <= '1';
+                counter <= "0000";
+                NS <= idle;
+		end case;
+		end if;
+	end if;
+	end process;
+	
+with PS select
+	tx <= '1' when idle,
+		  buf_bit when trans,
+		  '1' when others;
+with PS select
+	ready <= '1' when idle,
+			 '0' when others;
+end Behavioral;
